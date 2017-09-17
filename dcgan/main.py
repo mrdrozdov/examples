@@ -148,32 +148,50 @@ class _netD(nn.Module):
     def __init__(self, ngpu):
         super(_netD, self).__init__()
         self.ngpu = ngpu
-        self.main = nn.Sequential(
-            # input is (nc) x 64 x 64
-            nn.Conv2d(nc, ndf, 4, 2, 1, bias=False),
-            nn.LeakyReLU(0.2, inplace=True),
-            # state size. (ndf) x 32 x 32
-            nn.Conv2d(ndf, ndf * 2, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ndf * 2),
-            nn.LeakyReLU(0.2, inplace=True),
-            # state size. (ndf*2) x 16 x 16
-            nn.Conv2d(ndf * 2, ndf * 4, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ndf * 4),
-            nn.LeakyReLU(0.2, inplace=True),
-            # state size. (ndf*4) x 8 x 8
-            nn.Conv2d(ndf * 4, ndf * 8, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ndf * 8),
-            nn.LeakyReLU(0.2, inplace=True),
-            # state size. (ndf*8) x 4 x 4
-            nn.Conv2d(ndf * 8, 1, 4, 1, 0, bias=False),
-            nn.Sigmoid()
-        )
+        # attention
+        self.conv_attn = nn.Conv2d(nc, 1, 3, 1, 1, bias=False)
+        self.sigmoid_attn = nn.Sigmoid()
+        # input is (nc) x 64 x 64
+        self.conv1 = nn.Conv2d(nc, ndf, 4, 2, 1, bias=False)
+        self.relu1 = nn.LeakyReLU(0.2, inplace=True)
+        # state size. (ndf) x 32 x 32
+        self.conv2 = nn.Conv2d(ndf, ndf * 2, 4, 2, 1, bias=False)
+        self.bn2 = nn.BatchNorm2d(ndf * 2)
+        self.relu2 = nn.LeakyReLU(0.2, inplace=True)
+        # state size. (ndf*2) x 16 x 16
+        self.conv3 = nn.Conv2d(ndf * 2, ndf * 4, 4, 2, 1, bias=False)
+        self.bn3 = nn.BatchNorm2d(ndf * 4)
+        self.relu3 = nn.LeakyReLU(0.2, inplace=True)
+        # state size. (ndf*4) x 8 x 8
+        self.conv4 = nn.Conv2d(ndf * 4, ndf * 8, 4, 2, 1, bias=False)
+        self.bn4 = nn.BatchNorm2d(ndf * 8)
+        self.relu4 = nn.LeakyReLU(0.2, inplace=True)
+        # state size. (ndf*8) x 4 x 4
+        self.conv5 = nn.Conv2d(ndf * 8, 1, 4, 1, 0, bias=False)
+        self.sigmoid5 = nn.Sigmoid()
 
     def forward(self, input):
-        if isinstance(input.data, torch.cuda.FloatTensor) and self.ngpu > 1:
-            output = nn.parallel.data_parallel(self.main, input, range(self.ngpu))
-        else:
-            output = self.main(input)
+        x = input
+        # print(x.size())  # (64L, 3L, 64L, 64L)
+        attn = self.conv_attn(x)
+        attn = self.sigmoid_attn(attn)
+        x = x * attn
+        # print('attn', attn.size())  # attn (64L, 1L, 64L, 64L)
+        x = self.conv1(x)
+        # print(x.size())  # (64L, 64L, 32L, 32L)
+        x = self.relu1(x)
+        x = self.conv2(x)
+        x = self.bn2(x)
+        x = self.relu2(x)
+        x = self.conv3(x)
+        x = self.bn3(x)
+        x = self.relu3(x)
+        x = self.conv4(x)
+        x = self.bn4(x)
+        x = self.relu4(x)
+        x = self.conv5(x)
+        x = self.sigmoid5(x)
+        output = x
 
         return output.view(-1, 1).squeeze(1)
 
